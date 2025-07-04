@@ -1,0 +1,762 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>三轴调控装备-三维运动模拟 (已修改)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            overflow: hidden;
+            background-color: #000;
+            color: #e5e7eb;
+        }
+        #container {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+        }
+        canvas {
+            display: block;
+        }
+        #loading-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #111827;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            z-index: 100;
+            transition: opacity 0.5s ease;
+        }
+        .loader {
+            border: 5px solid #374151;
+            border-top: 5px solid #3b82f6;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+        }
+        #loading-text {
+            margin-top: 20px;
+            font-size: 1.1rem;
+            color: #9ca3af;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        #ui-panel {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background-color: rgba(17, 24, 39, 0.8);
+            padding: 24px;
+            border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            width: 340px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .slider-container {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 10px;
+            font-weight: 500;
+            color: #d1d5db;
+        }
+        input[type="range"] {
+            width: 100%;
+            -webkit-appearance: none;
+            appearance: none;
+            height: 6px;
+            background: #374151;
+            border-radius: 6px;
+            outline: none;
+            opacity: 0.8;
+            transition: opacity .2s;
+        }
+        input[type="range"]:hover {
+            opacity: 1;
+        }
+        input[type="range"]:disabled {
+            background: #4b5563;
+            opacity: 0.5;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 22px;
+            height: 22px;
+            background: #3b82f6;
+            cursor: pointer;
+            border-radius: 50%;
+            border: 3px solid #1f2937;
+        }
+        input[type="range"]:disabled::-webkit-slider-thumb {
+            background: #6b7280;
+        }
+        .value-display {
+            text-align: right;
+            font-size: 1rem;
+            font-weight: 500;
+            color: #9ca3af;
+        }
+        h1, h2 {
+            font-size: 1.3rem;
+            font-weight: 700;
+            margin-bottom: 20px;
+            border-bottom: 1px solid #374151;
+            padding-bottom: 16px;
+            color: #f9fafb;
+        }
+        h2 {
+            font-size: 1.15rem;
+            margin-top: 28px;
+        }
+        .toggle-switch {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-top: 16px;
+            padding: 12px;
+            background-color: rgba(255,255,255,0.05);
+            border-radius: 12px;
+        }
+        .toggle-switch .switch {
+            position: relative;
+            display: inline-block;
+            width: 50px;
+            height: 28px;
+        }
+        .toggle-switch .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .toggle-switch .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #4b5563;
+            transition: .4s;
+            border-radius: 28px;
+        }
+        .toggle-switch .slider:before {
+            position: absolute;
+            content: "";
+            height: 20px;
+            width: 20px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+        .toggle-switch input:checked + .slider {
+            background-color: #2563eb;
+        }
+        .toggle-switch input:checked + .slider:before {
+            transform: translateX(22px);
+        }
+    </style>
+</head>
+<body>
+    <div id="loading-overlay">
+        <div class="loader"></div>
+        <p id="loading-text">场景加载中...</p>
+    </div>
+
+    <div id="container"></div>
+    <div id="ui-panel">
+        <h1>三轴调控多参感知一体化监测装备</h1>
+        <div id="auto-tracking-panel">
+            <div class="toggle-switch">
+                <label for="auto-tracking-toggle">自动追光模拟</label>
+                <label class="switch">
+                    <input type="checkbox" id="auto-tracking-toggle">
+                    <span class="slider"></span>
+                </label>
+            </div>
+        </div>
+        <div id="manual-control-panel">
+            <h2>手动控制</h2>
+            <div class="slider-container">
+                <label for="axis1">水平旋转轴 (方位角)</label>
+                <input type="range" id="axis1" min="-180" max="180" value="0" step="1">
+                <div class="value-display" id="axis1-value">0°</div>
+            </div>
+            <div class="slider-container">
+                <label for="axis2">第一俯仰轴</label>
+                <input type="range" id="axis2" min="-60" max="60" value="20" step="1">
+                <div class="value-display" id="axis2-value">20°</div>
+            </div>
+            <div class="slider-container">
+                <label for="axis3">第二俯仰轴 (精调)</label>
+                <input type="range" id="axis3" min="-15" max="15" value="0" step="1">
+                <div class="value-display" id="axis3-value">0°</div>
+            </div>
+        </div>
+    </div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { Lensflare, LensflareElement } from 'three/addons/objects/Lensflare.js';
+        import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+        import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+        import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+        import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+        let scene, camera, renderer, controls, clock, composer;
+        let horizontalGroup, pitchGroup1, pitchGroup2, anemometerCups;
+        let orbitingSun, demoSun, normalVectorLine, environmentMap;
+        let isAutoTracking = false;
+
+        const targetRotation = {
+            y: 0,
+            x1: THREE.MathUtils.degToRad(20),
+            z2: 0,
+        };
+        
+        const mat = {
+            base: new THREE.MeshStandardMaterial({ color: 0x8892a0, roughness: 0.7, metalness: 0.2 }),
+            shaft: new THREE.MeshStandardMaterial({ color: 0xcfd6e0, roughness: 0.7, metalness: 0.2 }),
+            platform: new THREE.MeshStandardMaterial({ color: 0xdee2e6, roughness: 0.6, metalness: 0.1 }),
+            pvPanel: new THREE.MeshStandardMaterial({ color: 0x0a194f, roughness: 0.6, metalness: 0.3, emissive: 0x000011 }),
+            pvFrame: new THREE.MeshStandardMaterial({ color: 0x495057, roughness: 0.5, metalness: 0.3 }),
+            sensor: new THREE.MeshStandardMaterial({ color: 0x4f46e5, roughness: 0.6, metalness: 0.1, emissive: 0x110033 }),
+            windVane: new THREE.MeshStandardMaterial({ color: 0xdd3434, roughness: 0.7, metalness: 0.2 }),
+            knob: new THREE.MeshStandardMaterial({ color: 0x212529, roughness: 0.5, metalness: 0.1 }),
+            motor: new THREE.MeshStandardMaterial({ color: 0x495057, roughness: 0.8, metalness: 0.2 }),
+            pin: new THREE.MeshStandardMaterial({ color: 0xced4da, roughness: 0.6, metalness: 0.3 }),
+            ground: new THREE.MeshStandardMaterial({ color: 0x8a8a8a, roughness: 0.9, metalness: 0.0 }),
+        };
+
+        const axis1Slider = document.getElementById('axis1');
+        const axis2Slider = document.getElementById('axis2');
+        const axis3Slider = document.getElementById('axis3');
+        const axis1Value = document.getElementById('axis1-value');
+        const axis2Value = document.getElementById('axis2-value');
+        const axis3Value = document.getElementById('axis3-value');
+        const sliders = [axis1Slider, axis2Slider, axis3Slider];
+
+        init();
+
+        function init() {
+            clock = new THREE.Clock();
+            scene = new THREE.Scene();
+            scene.fog = new THREE.Fog(0x111827, 50, 150);
+
+            camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(7, 8, 12);
+
+            const container = document.getElementById('container');
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            renderer.toneMappingExposure = 1.3;
+            renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+            container.appendChild(renderer.domElement);
+
+            const loadingManager = new THREE.LoadingManager(() => {
+                const loadingOverlay = document.getElementById('loading-overlay');
+                loadingOverlay.style.opacity = '0';
+                setTimeout(() => {
+                    loadingOverlay.style.display = 'none';
+                }, 500);
+            });
+
+            const cubeTextureLoader = new THREE.CubeTextureLoader(loadingManager);
+            environmentMap = cubeTextureLoader.load([
+                'https://cdn.jsdelivr.net/gh/mrdoob/three.js/examples/textures/cube/Bridge2/px.jpg',
+                'https://cdn.jsdelivr.net/gh/mrdoob/three.js/examples/textures/cube/Bridge2/nx.jpg',
+                'https://cdn.jsdelivr.net/gh/mrdoob/three.js/examples/textures/cube/Bridge2/py.jpg',
+                'https://cdn.jsdelivr.net/gh/mrdoob/three.js/examples/textures/cube/Bridge2/ny.jpg',
+                'https://cdn.jsdelivr.net/gh/mrdoob/three.js/examples/textures/cube/Bridge2/pz.jpg',
+                'https://cdn.jsdelivr.net/gh/mrdoob/three.js/examples/textures/cube/Bridge2/nz.jpg',
+            ]);
+            scene.background = environmentMap;
+
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+            scene.add(ambientLight);
+
+            orbitingSun = createSun(true);
+            demoSun = createSun(false);
+            demoSun.visible = false;
+
+            createModel();
+            createVisualAids();
+            setupUIControls();
+
+            setManualLighting();
+
+            controls = new OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.maxPolarAngle = Math.PI / 2 - 0.05;
+            controls.minDistance = 5;
+            controls.maxDistance = 50;
+
+            composer = new EffectComposer(renderer);
+            const renderPass = new RenderPass(scene, camera);
+            composer.addPass(renderPass);
+
+            const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.2, 0.4, 0.75);
+            composer.addPass(bloomPass);
+
+            const outputPass = new OutputPass();
+            composer.addPass(outputPass);
+
+            window.addEventListener('resize', onWindowResize, false);
+            animate();
+        }
+
+        function createSun(isLightSource) {
+            const sunGroup = new THREE.Group();
+            scene.add(sunGroup);
+
+            if (isLightSource) {
+                const sunLight = new THREE.DirectionalLight(0xffffff, 3.5);
+                sunLight.castShadow = true;
+                sunLight.shadow.mapSize.width = 2048;
+                sunLight.shadow.mapSize.height = 2048;
+                sunLight.shadow.camera.near = 0.5;
+                sunLight.shadow.camera.far = 120;
+                sunLight.shadow.camera.left = -50;
+                sunLight.shadow.camera.right = 50;
+                sunLight.shadow.camera.top = 50;
+                sunLight.shadow.camera.bottom = -50;
+                sunLight.shadow.bias = -0.0005;
+                sunLight.shadow.radius = 2.5;
+                sunGroup.add(sunLight);
+                sunGroup.add(sunLight.target);
+                sunGroup.sunLight = sunLight;
+            }
+
+            const sunSphere = new THREE.Mesh(
+                new THREE.SphereGeometry(isLightSource ? 0.8 : 1.2, 32, 32),
+                new THREE.MeshBasicMaterial({ color: 0xfff5d4 })
+            );
+            sunGroup.add(sunSphere);
+
+            const textureLoader = new THREE.TextureLoader();
+            const textureFlare0 = textureLoader.load('https://cdn.jsdelivr.net/npm/three@0.160.0/examples/textures/lensflare/lensflare0.png');
+
+            const lensflare = new Lensflare();
+            lensflare.addElement(new LensflareElement(textureFlare0, 700, 0, sunSphere.color));
+            sunGroup.add(lensflare);
+
+            return sunGroup;
+        }
+
+        function createVisualAids() {
+            const normalMat = new THREE.LineBasicMaterial({ color: 0x22c55e, linewidth: 4 });
+            const normalPoints = [new THREE.Vector3(), new THREE.Vector3()];
+            const normalGeom = new THREE.BufferGeometry().setFromPoints(normalPoints);
+            normalVectorLine = new THREE.Line(normalGeom, normalMat);
+            normalVectorLine.visible = false;
+            scene.add(normalVectorLine);
+        }
+
+        function createModel() {
+            const ground = new THREE.Mesh(
+                new THREE.CircleGeometry(100, 64),
+                mat.ground
+            );
+            ground.rotation.x = -Math.PI / 2;
+            ground.receiveShadow = true;
+            scene.add(ground);
+
+            const staticGroup = new THREE.Group();
+            const base = new THREE.Mesh(new THREE.BoxGeometry(4, 0.4, 4), mat.base);
+            base.position.y = 0.2;
+            staticGroup.add(base);
+            staticGroup.add(createWindVaneAssembly());
+            scene.add(staticGroup);
+
+            horizontalGroup = new THREE.Group();
+            scene.add(horizontalGroup);
+
+            const horizontalBase = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.8, 0.4, 32), mat.base);
+            horizontalBase.position.y = 0.4;
+            horizontalGroup.add(horizontalBase);
+
+            const verticalShaft = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 5, 32), mat.shaft);
+            verticalShaft.position.y = 2.9;
+            horizontalGroup.add(verticalShaft);
+
+            const supportPlatform1 = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.3, 0.8), mat.platform);
+            supportPlatform1.position.y = 5.4;
+            horizontalGroup.add(supportPlatform1);
+
+            pitchGroup1 = new THREE.Group();
+            pitchGroup1.position.y = 5.7;
+            horizontalGroup.add(pitchGroup1);
+
+            horizontalGroup.add(createUBracket(0.8, 0.8, 0.2, 0.3, mat.base, 5.7, 0.45));
+            horizontalGroup.add(createUBracket(0.8, 0.8, 0.2, 0.3, mat.base, 5.7, -0.45));
+
+            const motor1 = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.3, 16), mat.motor);
+            motor1.rotation.z = Math.PI / 2;
+            motor1.position.set(-0.55, 5.7, 0);
+            horizontalGroup.add(motor1);
+
+            const pivotPin1 = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 1.1, 16), mat.pin);
+            pivotPin1.rotation.z = Math.PI / 2;
+            pivotPin1.position.y = 5.7;
+            horizontalGroup.add(pivotPin1);
+
+            pitchGroup2 = new THREE.Group();
+            const pitch2AxisBar = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 2.2, 16), mat.shaft);
+            pitch2AxisBar.rotation.x = Math.PI / 2;
+            pitchGroup2.add(pitch2AxisBar);
+            pitchGroup2.add(createTopPlatform());
+            pitchGroup2.position.y = 0.8;
+            pitchGroup1.add(pitchGroup2);
+
+            const bracketHeight = 0.6, bracketWidth = 0.6, bracketThickness = 0.15, bracketBaseHeight = 0.25;
+            const bracketYPos = 0.8;
+
+            const bracket1 = new THREE.Group();
+            let b_base1 = new THREE.Mesh(new THREE.BoxGeometry(bracketWidth, bracketBaseHeight, bracketThickness), mat.base);
+            let b_arm1_1 = new THREE.Mesh(new THREE.BoxGeometry(bracketThickness, bracketHeight, bracketThickness), mat.base);
+            b_arm1_1.position.set(bracketWidth/2 - bracketThickness/2, bracketHeight/2 + bracketBaseHeight/2, 0);
+            let b_arm1_2 = new THREE.Mesh(new THREE.BoxGeometry(bracketThickness, bracketHeight, bracketThickness), mat.base);
+            b_arm1_2.position.set(-bracketWidth/2 + bracketThickness/2, bracketHeight/2 + bracketBaseHeight/2, 0);
+            bracket1.add(b_base1, b_arm1_1, b_arm1_2);
+            bracket1.position.set(0, bracketYPos - bracketBaseHeight/2 - bracketHeight/2, 1.1);
+            pitchGroup1.add(bracket1);
+
+            const bracket2 = new THREE.Group();
+            let b_base2 = new THREE.Mesh(new THREE.BoxGeometry(bracketWidth, bracketBaseHeight, bracketThickness), mat.base);
+            let b_arm2_1 = new THREE.Mesh(new THREE.BoxGeometry(bracketThickness, bracketHeight, bracketThickness), mat.base);
+            b_arm2_1.position.set(bracketWidth/2 - bracketThickness/2, bracketHeight/2 + bracketBaseHeight/2, 0);
+            let b_arm2_2 = new THREE.Mesh(new THREE.BoxGeometry(bracketThickness, bracketHeight, bracketThickness), mat.base);
+            b_arm2_2.position.set(-bracketWidth/2 + bracketThickness/2, bracketHeight/2 + bracketBaseHeight/2, 0);
+            bracket2.add(b_base2, b_arm2_1, b_arm2_2);
+            bracket2.position.set(0, bracketYPos - bracketBaseHeight/2 - bracketHeight/2, -1.1);
+            pitchGroup1.add(bracket2);
+
+            const motor2 = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 0.25, 16), mat.motor);
+            motor2.rotation.x = Math.PI / 2;
+            motor2.position.set(0, 0.8, -1.2);
+            pitchGroup1.add(motor2);
+
+            const pivotPin2 = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 2.4, 16), mat.pin);
+            pivotPin2.rotation.x = Math.PI / 2;
+            pivotPin2.position.y = 0.8;
+            pitchGroup1.add(pivotPin2);
+
+            pitchGroup1.rotation.x = targetRotation.x1;
+
+            scene.traverse(child => {
+                if (child.isMesh) {
+                    child.castShadow = true;
+                    if(child.material.transparent) child.castShadow = false;
+                }
+            });
+        }
+
+        function createWindVaneAssembly() {
+            const group = new THREE.Group();
+            const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 0.5, 32), mat.base);
+            collar.position.y = 3.5;
+            group.add(collar);
+            const knob1 = new THREE.Mesh(new THREE.SphereGeometry(0.1, 16, 16), mat.knob);
+            knob1.position.set(0.35, 3.6, 0);
+            const knob2 = new THREE.Mesh(new THREE.SphereGeometry(0.1, 16, 16), mat.knob);
+            knob2.position.set(-0.35, 3.4, 0);
+            group.add(knob1, knob2);
+            group.add(createAnemometer());
+            const vaneArm = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 2.0, 8), mat.shaft);
+            vaneArm.position.set(1.3, 3.5, 0);
+            vaneArm.rotation.z = Math.PI / 2;
+            group.add(vaneArm);
+            const vaneTail = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.8, 1.2), mat.windVane);
+            vaneTail.position.set(2.3, 3.5, 0);
+            group.add(vaneTail);
+            const vaneHead = new THREE.Mesh(new THREE.ConeGeometry(0.15, 0.4, 16), mat.windVane);
+            vaneHead.position.set(0.3, 3.5, 0);
+            vaneHead.rotation.z = -Math.PI / 2;
+            group.add(vaneHead);
+            return group;
+        }
+
+        function createAnemometer() {
+            const group = new THREE.Group();
+            anemometerCups = new THREE.Group();
+            const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 1.5, 8), mat.shaft);
+            arm.rotation.z = Math.PI / 2;
+            group.add(arm);
+            const rotor = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.2, 16), mat.base);
+            rotor.rotation.x = Math.PI / 2;
+            anemometerCups.add(rotor);
+            for (let i = 0; i < 3; i++) {
+                const cupArm = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.5, 8), mat.shaft);
+                const cup = new THREE.Mesh(new THREE.SphereGeometry(0.15, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), mat.base);
+                cup.position.y = 0.5;
+                cup.rotation.x = Math.PI / 2;
+                const cupGroup = new THREE.Group();
+                cupGroup.add(cupArm);
+                cupGroup.add(cup);
+                cupGroup.rotation.y = (i * 2 * Math.PI) / 3;
+                anemometerCups.add(cupGroup);
+            }
+            group.add(anemometerCups);
+            group.position.set(-0.8, 3.5, 0);
+            return group;
+        }
+
+        function createUBracket(height, width, thickness, baseHeight, material, yPos, xPos) {
+            const bracket = new THREE.Group();
+            const base = new THREE.Mesh(new THREE.BoxGeometry(width, baseHeight, thickness), material);
+            const arm1 = new THREE.Mesh(new THREE.BoxGeometry(thickness, height, thickness), material);
+            arm1.position.set(width/2 - thickness/2, height/2 + baseHeight/2, 0);
+            const arm2 = new THREE.Mesh(new THREE.BoxGeometry(thickness, height, thickness), material);
+            arm2.position.set(-width/2 + thickness/2, height/2 + baseHeight/2, 0);
+            bracket.add(base, arm1, arm2);
+            bracket.position.set(xPos, yPos - baseHeight/2 - height/2, 0);
+            bracket.rotation.y = Math.PI / 2;
+            return bracket;
+        }
+
+        function createTopPlatform() {
+            const group = new THREE.Group();
+            const platformBase = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.2, 1.8), mat.platform);
+            platformBase.position.y = 0.2;
+            group.add(platformBase);
+            const pvFrame = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.05, 1.6), mat.pvFrame);
+            pvFrame.position.y = 0.325;
+            group.add(pvFrame);
+            const pvSurface = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.02, 1.5), mat.pvPanel);
+            pvSurface.position.y = 0.36;
+            group.add(pvSurface);
+            const lineMaterial = new THREE.LineBasicMaterial({ color: 0x60a5fa, transparent: true, opacity: 0.3 });
+            for (let i = -0.7; i <= 0.7; i += 0.2) {
+                const pointsH = [new THREE.Vector3(-0.75, 0.37, i), new THREE.Vector3(0.75, 0.37, i)];
+                const geometryH = new THREE.BufferGeometry().setFromPoints(pointsH);
+                group.add(new THREE.Line(geometryH, lineMaterial));
+                const pointsV = [new THREE.Vector3(i, 0.37, -0.75), new THREE.Vector3(i, 0.37, 0.75)];
+                const geometryV = new THREE.BufferGeometry().setFromPoints(pointsV);
+                group.add(new THREE.Line(geometryV, lineMaterial));
+            }
+            const sensorPositions = [[1.1, 0.2, 1.1], [-1.1, 0.2, 1.1], [1.1, 0.2, -1.1], [-1.1, 0.2, -1.1]];
+            sensorPositions.forEach(pos => {
+                const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.4, 8), mat.shaft);
+                arm.position.set(pos[0], pos[1], pos[2]);
+                arm.rotation.x = Math.PI / 2;
+                group.add(arm);
+                const sensorBase = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 0.1, 16), mat.base);
+                sensorBase.position.set(pos[0], pos[1] + 0.25, pos[2]);
+                group.add(sensorBase);
+                const sensorTop = new THREE.Mesh(new THREE.SphereGeometry(0.1, 16, 8, 0, Math.PI * 2, 0, Math.PI/2), mat.sensor);
+                sensorTop.position.set(pos[0], pos[1] + 0.3, pos[2]);
+                group.add(sensorTop);
+            });
+            return group;
+        }
+
+        function setupUIControls() {
+            const toggle = document.getElementById('auto-tracking-toggle');
+            toggle.addEventListener('change', (e) => {
+                isAutoTracking = e.target.checked;
+                normalVectorLine.visible = isAutoTracking;
+                demoSun.visible = isAutoTracking;
+                sliders.forEach(slider => slider.disabled = isAutoTracking);
+
+                if (isAutoTracking) {
+                    setAutoLighting();
+                } else {
+                    setManualLighting();
+                    targetRotation.y = horizontalGroup.rotation.y;
+                    targetRotation.x1 = pitchGroup1.rotation.x;
+                    targetRotation.z2 = pitchGroup2.rotation.z;
+                }
+            });
+
+            axis1Slider.addEventListener('input', (e) => {
+                const value = parseFloat(e.target.value);
+                targetRotation.y = THREE.MathUtils.degToRad(value);
+            });
+
+            axis2Slider.addEventListener('input', (e) => {
+                const value = parseFloat(e.target.value);
+                targetRotation.x1 = THREE.MathUtils.degToRad(value);
+            });
+
+            axis3Slider.addEventListener('input', (e) => {
+                const value = parseFloat(e.target.value);
+                targetRotation.z2 = THREE.MathUtils.degToRad(value);
+            });
+
+            axis1Value.textContent = `${axis1Slider.value}°`;
+            axis2Value.textContent = `${axis2Slider.value}°`;
+            axis3Value.textContent = `${axis3Slider.value}°`;
+        }
+
+        function setManualLighting() {
+            scene.environment = null; 
+            
+            orbitingSun.position.set(-20, 30, 25);
+            orbitingSun.sunLight.target.position.set(0, 0, 0);
+            orbitingSun.sunLight.color.set(0xffffff);
+            orbitingSun.sunLight.intensity = 2.0; 
+            scene.traverse(obj => {
+                if (obj.isAmbientLight) {
+                    obj.intensity = 0.6; 
+                }
+            });
+            orbitingSun.visible = true;
+        }
+
+        function setAutoLighting() {
+            scene.environment = null;
+            orbitingSun.sunLight.color.set(0xffffff);
+            orbitingSun.sunLight.intensity = 1.0; 
+             scene.traverse(obj => {
+                if (obj.isAmbientLight) {
+                    obj.intensity = 0.4;
+                }
+            });
+        }
+
+        function updateAutoEnvironment(elapsedTime) {
+            orbitingSun.position.set(0, -50, 0);
+            orbitingSun.sunLight.target.position.set(0, 0, 0);
+            orbitingSun.visible = orbitingSun.position.y > -5;
+        }
+
+        function updateAutoTrackingTargets(elapsedTime) {
+            const angle = elapsedTime * 0.4;
+            const radius = 65;
+            const virtualSunPosition = new THREE.Vector3(
+                Math.cos(angle) * radius,
+                Math.sin(angle) * 45,
+                Math.sin(angle) * radius * 0.5
+            );
+
+            const panelWorldPosition = new THREE.Vector3();
+            pitchGroup2.getWorldPosition(panelWorldPosition);
+
+            const sunDirWorld = new THREE.Vector3().subVectors(virtualSunPosition, panelWorldPosition).normalize();
+
+            const invHorizontal = horizontalGroup.quaternion.clone().invert();
+            const sunDirInHorizontalFrame = sunDirWorld.clone().applyQuaternion(invHorizontal);
+
+            let azimuth = Math.atan2(-sunDirInHorizontalFrame.x, -sunDirInHorizontalFrame.z);
+            targetRotation.y = azimuth;
+
+            const invPitch1 = pitchGroup1.quaternion.clone().invert();
+            const sunDirInPitch1Frame = sunDirInHorizontalFrame.clone().applyQuaternion(invPitch1);
+
+            let elevation1 = Math.atan2(sunDirInPitch1Frame.y, -sunDirInPitch1Frame.z);
+            targetRotation.x1 = THREE.MathUtils.clamp(elevation1, THREE.MathUtils.degToRad(axis2Slider.min), THREE.MathUtils.degToRad(axis2Slider.max));
+
+            const invPitch2 = pitchGroup2.quaternion.clone().invert();
+            const sunDirInPitch2Frame = sunDirInPitch1Frame.clone().applyQuaternion(invPitch2);
+
+            let elevation2 = Math.atan2(sunDirInPitch2Frame.y, sunDirInPitch2Frame.x);
+            targetRotation.z2 = THREE.MathUtils.clamp(elevation2, THREE.MathUtils.degToRad(axis3Slider.min), THREE.MathUtils.degToRad(axis3Slider.max));
+        }
+
+        function updateDemoVisuals() {
+            const panelCenter = new THREE.Vector3();
+            pitchGroup2.getWorldPosition(panelCenter);
+
+            const normal = new THREE.Vector3(0, 1, 0);
+            normal.applyQuaternion(pitchGroup2.getWorldQuaternion(new THREE.Quaternion()));
+
+            const normalEnd = new THREE.Vector3().addVectors(panelCenter, normal.clone().multiplyScalar(10));
+            const normalPositions = normalVectorLine.geometry.attributes.position;
+            normalPositions.setXYZ(0, panelCenter.x, panelCenter.y, panelCenter.z);
+            normalPositions.setXYZ(1, normalEnd.x, normalEnd.y, normalEnd.z);
+            normalPositions.needsUpdate = true;
+
+            const demoSunPosition = new THREE.Vector3().addVectors(panelCenter, normal.clone().multiplyScalar(11));
+            demoSun.position.copy(demoSunPosition);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            composer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+            const elapsedTime = clock.getElapsedTime();
+
+            if (isAutoTracking) {
+                updateAutoEnvironment(elapsedTime);
+                updateAutoTrackingTargets(elapsedTime);
+            } else {
+                orbitingSun.visible = true;
+            }
+
+            if (anemometerCups) {
+                anemometerCups.rotation.y += delta * 2;
+            }
+
+            // --- MODIFICATION START: Reduced lerpFactor for a smoother, delayed tracking effect ---
+            // 修改开始：减小了 lerpFactor 以实现更平滑、带延迟的追踪效果
+            const lerpFactor = 0.02;
+            // --- MODIFICATION END ---
+
+            let currentY = horizontalGroup.rotation.y;
+            let targetY = targetRotation.y;
+            let diff = targetY - currentY;
+            while (diff < -Math.PI) diff += 2 * Math.PI;
+            while (diff > Math.PI) diff -= 2 * Math.PI;
+            horizontalGroup.rotation.y += diff * lerpFactor;
+
+            pitchGroup1.rotation.x = THREE.MathUtils.lerp(pitchGroup1.rotation.x, targetRotation.x1, lerpFactor);
+            pitchGroup2.rotation.z = THREE.MathUtils.lerp(pitchGroup2.rotation.z, targetRotation.z2, lerpFactor);
+
+            const currentDegY = THREE.MathUtils.radToDeg(horizontalGroup.rotation.y);
+            const currentDegX1 = THREE.MathUtils.radToDeg(pitchGroup1.rotation.x);
+            const currentDegZ2 = THREE.MathUtils.radToDeg(pitchGroup2.rotation.z);
+
+            axis1Value.textContent = `${(currentDegY % 360).toFixed(0)}°`;
+            axis2Value.textContent = `${currentDegX1.toFixed(0)}°`;
+            axis3Value.textContent = `${currentDegZ2.toFixed(0)}°`;
+
+            if (isAutoTracking) {
+                axis1Slider.value = currentDegY;
+                axis2Slider.value = currentDegX1;
+                axis3Slider.value = currentDegZ2;
+                updateDemoVisuals();
+            }
+
+            controls.update();
+            composer.render();
+        }
+    </script>
+</body>
+</html>
